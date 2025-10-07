@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>uCMD Builder — v3.6 (export/import + autosave)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card{ background:#fff;border:1px solid #e2e8f0;border-radius:1rem;box-shadow:0 1px 2px rgba(0,0,0,.04);padding:1rem }
+    .btn{ padding:.5rem .8rem;border-radius:.75rem;background:#0f172a;color:#fff;box-shadow:0 1px 1px rgba(0,0,0,.12) }
+    .btn:hover{ background:#111827 }
+    .btn-sec{ padding:.5rem .8rem;border-radius:.75rem;border:1px solid #cbd5e1;background:#fff }
+    .pill{ font-size:.75rem;padding:.15rem .5rem;border-radius:999px;background:#f1f5f9;border:1px solid #e2e8f0 }
+    .input{ width:100%;border:1px solid #cbd5e1;border-radius:.75rem;padding:.5rem .75rem }
+    .chev{ transition:.15s transform }
+    .chev.rot{ transform:rotate(-90deg) }
+    .mini{ font-size:.75rem;color:#64748b }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace }
+    .muted{ color:#64748b }
+    .tabs button{ border:1px solid #cbd5e1;padding:.35rem .6rem;border-radius:.6rem }
+    .tabs .active{ background:#0f172a;color:#fff;border-color:#0f172a }
+    .codearea{ white-space:pre; overflow:auto; max-height:65vh; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size:.85rem; line-height:1.35 }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+    <header class="flex items-center justify-between gap-3">
+      <h1 class="text-2xl md:text-3xl font-bold">
+        uCMD Builder <span class="text-sm font-normal text-slate-500 align-top">v3.6</span>
+      </h1>
+      <div class="flex flex-wrap gap-2">
+        <button id="btnExportHdr" class="btn">Export header</button>
+        <button id="btnCopyHdr" class="btn-sec">Kopírovat header</button>
+
+        <!-- Export/Import konfigurace -->
+        <button id="btnExportCfg" class="btn-sec">Export config</button>
+        <label class="btn-sec cursor-pointer">
+          Import config
+          <input id="inImportCfg" type="file" accept="application/json" class="hidden">
+        </label>
+        <button id="btnClearCfg" class="btn-sec" title="Smazat uloženou konfiguraci">Vyčistit uložené</button>
+      </div>
+    </header>
+
+    <!-- Drag & drop zóna -->
+    <div id="dropZone" class="border border-dashed border-slate-300 rounded-xl p-3 text-sm text-slate-500 text-center">
+      Přetáhni sem .json s konfigurací pro import
+    </div>
+
+    <div class="grid md:grid-cols-5 gap-6 mt-2">
+      <!-- LEFT -->
+      <section class="card md:col-span-3 space-y-4">
+        <div class="grid md:grid-cols-3 gap-4">
+          <div>
+            <label class="text-sm font-medium">CLI instance (symbol)</label>
+            <input id="cliInstance" class="input mono" value="cli" />
+            <p class="text-xs muted mt-1">Jméno proměnné typu <span class="mono">ucmd_t</span> (např. <span class="mono">cli</span>).</p>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Auto-size limity</label>
+            <div class="grid grid-cols-3 gap-2 mt-1">
+              <div>
+                <label class="mini flex items-center gap-2">
+                  <input type="checkbox" id="autoLine" checked> Auto
+                </label>
+                <input id="advLine" class="input mono" type="number" min="8" max="255" value="64" disabled/>
+                <p class="mini mt-1">UCMD_MAX_LINE</p>
+              </div>
+              <div>
+                <label class="mini flex items-center gap-2">
+                  <input type="checkbox" id="autoArgc" checked> Auto
+                </label>
+                <input id="advArgc" class="input mono" type="number" min="2" max="16" value="8" disabled/>
+                <p class="mini mt-1">UCMD_MAX_ARGC</p>
+              </div>
+              <div>
+                <label class="mini flex items-center gap-2">
+                  <input type="checkbox" id="autoGroups" checked> Auto
+                </label>
+                <input id="advGroups" class="input mono" type="number" min="1" max="16" value="8" disabled/>
+                <p class="mini mt-1">UCMD_MAX_GROUPS</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Example</label>
+            <div class="flex gap-2 mt-1">
+              <span class="pill">Arduino</span>
+              <span class="pill">PC</span>
+            </div>
+            <p class="text-xs muted mt-1">„Example“ obsahuje skeletony callbacků.</p>
+          </div>
+        </div>
+
+        <hr>
+
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-medium">Skupiny</div>
+          <button id="btnAddGroup" class="btn-sec">+ Přidat skupinu</button>
+        </div>
+
+        <div id="groups" class="space-y-3"></div>
+      </section>
+
+      <!-- RIGHT -->
+      <section class="card md:col-span-2 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="tabs flex gap-2">
+            <button id="tabHeader"  class="active">Header</button>
+            <button id="tabExample">Example</button>
+          </div>
+          <div class="flex gap-2">
+            <button id="btnCopyRight" class="btn-sec">Kopírovat</button>
+            <button id="btnDownloadRight" class="btn">Stáhnout</button>
+          </div>
+        </div>
+        <div id="right" class="codearea border border-slate-200 rounded-lg p-3 bg-slate-50"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  // ---------- utils & storage ----------
+  function el(s){ return document.querySelector(s); }
+  function esc(s){ s=(s||''); return s.replace(/\\/g,'\\\\').replace(/"/g,'\\"'); }
+  var STORAGE_KEY = 'ucmd_builder_model_v36';
+
+  function downloadText(filename, text){
+    var blob = new Blob([text], {type:'text/plain'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 0);
+  }
+  function downloadJSON(filename, obj){
+    var blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 0);
+  }
+
+  function saveToLocal(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(model)); } catch(e){}
+  }
+  function loadFromLocal(){
+    try {
+      var s = localStorage.getItem(STORAGE_KEY);
+      if (!s) return false;
+      var m = JSON.parse(s);
+      if (isValidModel(m)) { applyModelSafely(m); return true; }
+    } catch(e){}
+    return false;
+  }
+  function isValidModel(m){
+    if (!m || typeof m !== 'object') return false;
+    if (!m.limits || !m.groups || !Array.isArray(m.groups)) return false;
+    var req = ['autoLine','autoArgc','autoGroups','line','argc','groups'];
+    for (var i=0;i<req.length;i++){ if(!(req[i] in m.limits)) return false; }
+    if (typeof m.cliInstance !== 'string') return false;
+    for (var gi=0; gi<m.groups.length; gi++){
+      var g=m.groups[gi];
+      if (!g || typeof g.name!=='string' || !Array.isArray(g.items)) return false;
+      for (var ii=0; ii<g.items.length; ii++){
+        var it=g.items[ii];
+        if (!it || typeof it.name!=='string') return false;
+      }
+    }
+    return true;
+  }
+  function applyModelSafely(next){
+    if (!next.rightTab) next.rightTab = 'header';
+    if (!next.exampleTab) next.exampleTab = 'arduino';
+    // Sloučit do modelu (shallow)
+    for (var k in next) { if (Object.prototype.hasOwnProperty.call(next,k)) model[k]=next[k]; }
+    render();
+  }
+
+  // ---------- state ----------
+  var model = {
+    cliInstance: 'cli',
+    limits: { autoLine:true, autoArgc:true, autoGroups:true, line:64, argc:8, groups:8 },
+    groups: [
+      { name:'wireless', expanded:true, items:[
+        { name:'channel', var:'', help:'1..11', def:1, set:false, status:false },
+        { name:'power',   var:'', help:'0..20', def:0, set:false, status:false },
+        { name:'scan',    var:'', help:'0,1',   def:0, set:true,  status:false }
+      ]}
+    ],
+    rightTab: 'header',
+    exampleTab: 'arduino'
+  };
+
+  // ---------- helpers ----------
+  function sanitizeToken(s){
+    s=(s||'').toLowerCase().replace(/[^a-z0-9_]/g,'_');
+    if(!/^[a-z_]/.test(s)) s='v_'+s;
+    return s;
+  }
+  function sanitizeVar(s){ return (s||'').replace(/[^A-Za-z0-9_]/g,'_'); }
+  function autoVar(g,i){ return 'g_'+g+'_'+i; }
+
+  // ---------- auto compute UCMD_MAX_* ----------
+  function hasAnyItem(){
+    for (var gi=0; gi<model.groups.length; gi++){
+      if (model.groups[gi].items.length>0) return true;
+    }
+    return false;
+  }
+  function computeAutoGroups(){ return Math.max(1, model.groups.length); }
+  function computeAutoArgc(){ return hasAnyItem() ? 4 : 2; }
+  function computeAutoLine(){
+    var gLens = [];
+    for (var gi=0; gi<model.groups.length; gi++){ gLens.push(sanitizeToken(model.groups[gi].name).length); }
+    var maxG = gLens.length ? Math.max.apply(null, gLens) : 0;
+
+    var itemLens = [];
+    for (var gj=0; gj<model.groups.length; gj++){
+      var g=model.groups[gj];
+      for (var ii=0; ii<g.items.length; ii++){
+        itemLens.push(sanitizeToken(g.items[ii].name).length);
+      }
+    }
+    var maxI = itemLens.length ? Math.max.apply(null, itemLens) : 0;
+
+    var L1 = 4 + 1 + maxG + (maxI? (1 + maxI) : 0);                // "help G [I]"
+    var L2 = maxG ? (maxG + 6 + (maxI?maxI:0)) : 0;                 // "G show [I]"
+    var L3 = (maxG && maxI) ? (maxG + 1 + 3 + 1 + maxI + 1 + 3) : 0;// "G set I 255"
+    var base = Math.max(13, L1, L2, L3); // "help commands" = 13
+    var need = base + 1 + 2; // NUL + rezerva
+    return Math.max(16, Math.min(255, need|0));
+  }
+  function currentLimits(){
+    return {
+      line:   model.limits.autoLine   ? computeAutoLine()   : (model.limits.line|0),
+      argc:   model.limits.autoArgc   ? computeAutoArgc()   : (model.limits.argc|0),
+      groups: model.limits.autoGroups ? computeAutoGroups() : (model.limits.groups|0)
+    };
+  }
+
+  // ---------- UI ops ----------
+  function addGroup(){
+    for (var gi=0; gi<model.groups.length; gi++){ model.groups[gi].expanded=false; }
+    model.groups.unshift({ name:'group'+(model.groups.length+1), expanded:true, items:[] });
+  }
+  function removeGroup(idx){ model.groups.splice(idx,1); }
+  function addItem(gidx){
+    var g=model.groups[gidx];
+    g.items.push({ name:'item'+(g.items.length+1), var:'', help:'', def:0, set:false, status:false });
+  }
+  function removeItem(gidx, iidx){ model.groups[gidx].items.splice(iidx,1); }
+
+  function render(){
+    el('#cliInstance').value = model.cliInstance;
+
+    // autos
+    el('#autoLine').checked   = model.limits.autoLine;
+    el('#autoArgc').checked   = model.limits.autoArgc;
+    el('#autoGroups').checked = model.limits.autoGroups;
+
+    // inputs enable
+    el('#advLine').disabled   = model.limits.autoLine;
+    el('#advArgc').disabled   = model.limits.autoArgc;
+    el('#advGroups').disabled = model.limits.autoGroups;
+
+    // values (manual)
+    el('#advLine').value   = model.limits.line|0;
+    el('#advArgc').value   = model.limits.argc|0;
+    el('#advGroups').value = model.limits.groups|0;
+
+    // groups render
+    var wrap = el('#groups');
+    wrap.innerHTML = '';
+    for (var gi=0; gi<model.groups.length; gi++){
+      (function(gi){
+        var g = model.groups[gi];
+        var gEl = document.createElement('div');
+        gEl.className='border border-slate-200 rounded-xl p-3';
+        gEl.innerHTML =
+          '<div class="flex items-center justify-between gap-2">'
+        +   '<div class="flex items-center gap-2">'
+        +     '<button class="chev '+(g.expanded?'':'rot')+'">▾</button>'
+        +     '<input class="input mono w-48" value="'+esc(g.name)+'" />'
+        +     '<span class="mini">('+(g.items.length)+' položek)</span>'
+        +   '</div>'
+        +   '<div class="flex gap-2">'
+        +     '<button class="btn-sec" data-act="addItem">+ Přidat položku</button>'
+        +     '<button class="btn-sec" data-act="removeGroup">Smazat skupinu</button>'
+        +   '</div>'
+        + '</div>'
+        + '<div class="mt-3 space-y-2 '+(g.expanded?'':'hidden')+'" data-items></div>';
+
+        var itemsWrap = gEl.querySelector('[data-items]');
+        for (var ii=0; ii<g.items.length; ii++){
+          (function(ii){
+            var it=g.items[ii];
+            var row = document.createElement('div');
+            row.className='grid md:grid-cols-6 gap-2';
+            row.innerHTML =
+              '<input class="input mono md:col-span-2" placeholder="název položky" value="'+esc(it.name)+'"/>'
+            + '<input class="input mono" placeholder="jméno proměnné (nech prázdné pro auto)" value="'+esc(it.var||'')+'"/>'
+            + '<input class="input mono" placeholder="nápověda (help)" value="'+esc(it.help||'')+'"/>'
+            + '<input class="input mono" type="number" title="výchozí hodnota" value="'+(it.def|0)+'"/>'
+            + '<div class="flex items-center gap-3">'
+            +   '<label class="mini flex items-center gap-2"><input type="checkbox" '+(it.set?'checked':'')+'/> set</label>'
+            +   '<label class="mini flex items-center gap-2"><input type="checkbox" '+(it.status?'checked':'')+'/> status</label>'
+            +   '<button class="btn-sec" data-act="removeItem" title="Smazat">✕</button>'
+            + '</div>';
+
+            var inputs = row.querySelectorAll('input');
+            var nm = inputs[0], vr=inputs[1], hp=inputs[2], df=inputs[3];
+            var ck = row.querySelectorAll('input[type=checkbox]');
+            var ckSet = ck[0], ckStat = ck[1];
+
+            nm.addEventListener('input',  function(e){ it.name = e.target.value; updateRight(); saveToLocal(); });
+            vr.addEventListener('input',  function(e){ it.var  = e.target.value; updateRight(); saveToLocal(); });
+            hp.addEventListener('input',  function(e){ it.help = e.target.value; updateRight(); saveToLocal(); });
+            df.addEventListener('input',  function(e){ it.def  = (e.target.value|0); updateRight(); saveToLocal(); });
+            ckSet.addEventListener('change', function(e){ it.set = e.target.checked; updateRight(); saveToLocal(); });
+            ckStat.addEventListener('change',function(e){ it.status = e.target.checked; updateRight(); saveToLocal(); });
+
+            var rmBtn = row.querySelector('[data-act=removeItem]');
+            rmBtn.addEventListener('click', function(){ removeItem(gi, ii); render(); });
+
+            itemsWrap.appendChild(row);
+          })(ii);
+        }
+
+        // header binds
+        var btnChev = gEl.querySelector('button.chev');
+        var inpName = gEl.querySelector('input');
+        btnChev.addEventListener('click', function(){
+          g.expanded = !g.expanded;
+          render();
+        });
+        inpName.addEventListener('input', function(e){ g.name = e.target.value; updateRight(); saveToLocal(); });
+
+        // add/remove buttons
+        gEl.querySelector('[data-act=addItem]').addEventListener('click', function(){ addItem(gi); render(); });
+        gEl.querySelector('[data-act=removeGroup]').addEventListener('click', function(){ removeGroup(gi); render(); });
+
+        wrap.appendChild(gEl);
+      })(gi);
+    }
+
+    updateRight();
+    saveToLocal();
+  }
+
+  // ---------- code generation ----------
+  function customVarsList(){
+    var out=[];
+    for (var gi=0; gi<model.groups.length; gi++){
+      var g=model.groups[gi];
+      for (var ii=0; ii<g.items.length; ii++){
+        var it=g.items[ii];
+        var name=(it.var||'').trim();
+        if (name) out.push(sanitizeVar(name));
+      }
+    }
+    return out;
+  }
+  function autoVarsList(){
+    var out=[];
+    for (var gi=0; gi<model.groups.length; gi++){
+      var g=model.groups[gi];
+      for (var ii=0; ii<g.items.length; ii++){
+        var it=g.items[ii];
+        if (!(it.var||'').trim()){
+          out.push({name:autoVar(gi,ii), def:(it.def|0)});
+        }
+      }
+    }
+    return out;
+  }
+
+  function genHeader(){
+    var lim=currentLimits();
+    var ci=sanitizeToken(model.cliInstance);
+
+    // groups/items (sanitized)
+    var groups=[], items=[];
+    for (var gi=0; gi<model.groups.length; gi++){
+      var g=model.groups[gi];
+      groups.push(sanitizeToken(g.name));
+      for (var ii=0; ii<g.items.length; ii++){
+        items.push(sanitizeToken(g.items[ii].name));
+      }
+    }
+
+    var H=[];
+    H.push('#pragma once');
+    H.push('#include <stdint.h>');
+    H.push('#include <stdbool.h>');
+    H.push('');
+    H.push('#ifndef UCMD_MAX_LINE');
+    H.push('#define UCMD_MAX_LINE '+lim.line);
+    H.push('#endif');
+    H.push('#ifndef UCMD_MAX_ARGC');
+    H.push('#define UCMD_MAX_ARGC '+lim.argc);
+    H.push('#endif');
+    H.push('#ifndef UCMD_MAX_GROUPS');
+    H.push('#define UCMD_MAX_GROUPS '+lim.groups);
+    H.push('#endif');
+    H.push('#include "ucmd.h"');
+    H.push('');
+    H.push('/* Generated by uCMD Builder v3.6 — core-only, auto-size, single-header-ready */');
+    H.push('#ifndef UCMD_COUNT');
+    H.push('#define UCMD_COUNT(a) ((uint8_t)(sizeof(a)/sizeof((a)[0])))');
+    H.push('#endif');
+    H.push('');
+
+    // string pool helper
+    H.push('#ifdef __AVR__');
+    H.push('#  define STR_DEF(sym,lit) static const char sym[] PROGMEM = lit');
+    H.push('#else');
+    H.push('#  define STR_DEF(sym,lit) static const char sym[] = lit');
+    H.push('#endif');
+    H.push('');
+
+    // pool: group & item names (dedup)
+    var nameSetObj = {};
+    for (var i=0;i<groups.length;i++){ nameSetObj[groups[i]] = true; }
+    for (var j=0;j<items.length;j++){ nameSetObj[items[j]] = true; }
+    for (var nm in nameSetObj){
+      H.push('STR_DEF(S_'+nm+', "'+esc(nm)+'");');
+    }
+    if (Object.keys(nameSetObj).length) H.push('');
+
+    // defs
+    H.push('typedef struct { const char *name; uint8_t item_first; uint8_t item_count; } ucmd_group_def;');
+    H.push('typedef struct { const char *name; const char *help; uint8_t has_set; uint8_t has_status; } ucmd_item_def;');
+    H.push('');
+
+    // items
+    H.push('static const ucmd_item_def UCMD_ITEMS[] = {');
+    for (var gi2=0; gi2<model.groups.length; gi2++){
+      var gg=model.groups[gi2];
+      for (var ii2=0; ii2<gg.items.length; ii2++){
+        var it=gg.items[ii2];
+        var nm2=sanitizeToken(it.name);
+        var hp=(it.help||'').trim();
+        H.push('  { S_'+nm2+', '+(hp?('"'+esc(hp)+'"'):'NULL')+', '+(it.set?1:0)+', '+(it.status?1:0)+' },');
+      }
+    }
+    H.push('};');
+    H.push('');
+
+    // groups table with slices
+    var base=0;
+    H.push('static const ucmd_group_def UCMD_GROUPS[] = {');
+    for (var gi3=0; gi3<model.groups.length; gi3++){
+      var g3=model.groups[gi3];
+      var nm3=sanitizeToken(g3.name);
+      var cnt=g3.items.length|0;
+      H.push('  { S_'+nm3+', '+base+', '+cnt+' },');
+      base += cnt;
+    }
+    H.push('};');
+    H.push('');
+
+    // API stubs
+    H.push('/* User callbacks (declare here, define ve tvém .c): */');
+    H.push('void ucmd_on_set(const char* group, const char* item, int value);');
+    H.push('int  ucmd_on_status(const char* group, const char* item, char* out, int out_len);');
+    H.push('');
+
+    // glue
+    H.push('static inline void ucmd_cli_register(ucmd_t* cli){');
+    H.push('  (void)cli; /* připoj své API sem */');
+    H.push('}');
+    H.push('');
+
+    return H.join('\\n');
+  }
+
+  function genCallbackSnippets(){
+    if(!model.groups.length) return '';
+    var L=[];
+    L.push('/* ---- Skeletony callbacků ---- */');
+    L.push('void ucmd_on_set(const char* group, const char* item, int value){');
+    L.push('  // TODO: ošetři pair (group,item) a nastav proměnné');
+    L.push('}');
+    L.push('int ucmd_on_status(const char* group, const char* item, char* out, int out_len){');
+    L.push('  // TODO: vrať délku výstupu do out[]; záporně = error');
+    L.push('  return 0;');
+    L.push('}');
+    return L.join('\\n');
+  }
+
+  function genExampleArduino(){
+    var lim=currentLimits();
+    var ci=sanitizeToken(model.cliInstance);
+    var customs=customVarsList(), autos=autoVarsList();
+    var L=[];
+    L.push('/* main_arduino.ino — minimal Arduino demo (single-header) */');
+    L.push('#include <Arduino.h>');
+    L.push('#include "generated_ucmd.h"');
+    L.push('');
+    if(customs.length){
+      L.push('/* VLASTNÍ proměnné: pokud už existují, ponech v komentáři: */');
+      for (var i=0;i<customs.length;i++){ L.push('volatile uint8_t '+customs[i]+' = 0;'); }
+      L.push('');
+    }
+    if(autos.length){
+      L.push('/* AUTO proměnné generované builderem (můžeš si je přenést do svého kódu): */');
+      for (var j=0;j<autos.length;j++){ L.push('volatile uint8_t '+autos[j].name+' = '+autos[j].def+';'); }
+      L.push('');
+    }
+    var stubs = genCallbackSnippets(); if(stubs){ L.push(stubs); L.push(''); }
+    L.push('ucmd_t '+ci+';');
+    L.push('static void serial_putc(char c){ Serial.write((uint8_t)c); }');
+    L.push('');
+    L.push('void setup(){');
+    L.push('  Serial.begin(115200);');
+    L.push('  ucmd_init(&'+ci+', serial_putc);');
+    L.push('  ucmd_cli_register(&'+ci+');');
+    if(autos.length){
+      L.push('  // Auto proměnné (definované zde) si vyprintujeme:');
+      for (var k=0;k<autos.length;k++){ L.push('  Serial.print(F("'+autos[k].name+'=")); Serial.println('+autos[k].name+');'); }
+    }
+    L.push('  Serial.print(F("> "));');
+    L.push('}');
+    L.push('');
+    L.push('void loop(){');
+    L.push('  while (Serial.available()){');
+    L.push("    char ch=(char)Serial.read();");
+    L.push("    if (ch=='\\n'){ ucmd_feed_char(&"+ci+",'\\n'); Serial.print(F(\"\\r\\n> \")); }");
+    L.push("    else if (ch!='\\r'){ Serial.write((uint8_t)ch); ucmd_feed_char(&"+ci+",ch); }");
+    L.push('  }');
+    L.push('}');
+    return L.join('\\n');
+  }
+
+  function genExamplePC(){
+    var lim=currentLimits();
+    var ci=sanitizeToken(model.cliInstance);
+    var customs=customVarsList(), autos=autoVarsList();
+    var L=[];
+    L.push('/* main_pc.c — minimal host demo (single-header) */');
+    L.push('#include <stdio.h>');
+    L.push('#include "generated_ucmd.h"');
+    L.push('');
+    if(customs.length){
+      L.push('/* VLASTNÍ proměnné: pokud už existují, ponech v komentáři: */');
+      for (var i=0;i<customs.length;i++){ L.push('volatile unsigned '+customs[i]+' = 0;'); }
+      L.push('');
+    }
+    if(autos.length){
+      L.push('/* AUTO proměnné generované builderem (můžeš si je přenést do svého kódu): */');
+      for (var j=0;j<autos.length;j++){ L.push('volatile unsigned '+autos[j].name+' = '+autos[j].def+';'); }
+      L.push('');
+    }
+    var stubs = genCallbackSnippets(); if(stubs){ L.push(stubs); L.push(''); }
+    L.push('static void putc_cb(char c){ fputc(c, stdout); }');
+    L.push('int main(){');
+    L.push('  ucmd_t '+ci+';');
+    L.push('  ucmd_init(&'+ci+', putc_cb);');
+    L.push('  ucmd_cli_register(&'+ci+');');
+    L.push('  printf("> "); fflush(stdout);');
+    L.push("  for(;;){ int ch=getchar(); if(ch==EOF) break; ucmd_feed_char(&"+ci+", (char)ch); if(ch=='\\n'){ printf(\"\\r\\n> \"); fflush(stdout);} }");
+    L.push('  return 0;');
+    L.push('}');
+    return L.join('\\n');
+  }
+
+  function rightText(){
+    if (model.rightTab==='header') return genHeader();
+    return genExampleArduino() + '\\n\\n/* --------------- */\\n\\n' + genExamplePC();
+  }
+  function updateRight(){
+    el('#right').textContent = rightText();
+    saveToLocal();
+  }
+
+  // ---------- events ----------
+  el('#cliInstance').addEventListener('input', function(e){
+    model.cliInstance=sanitizeToken(e.target.value); updateRight();
+  });
+
+  el('#autoLine').addEventListener('change', function(e){ model.limits.autoLine=e.target.checked; render(); });
+  el('#autoArgc').addEventListener('change', function(e){ model.limits.autoArgc=e.target.checked; render(); });
+  el('#autoGroups').addEventListener('change', function(e){ model.limits.autoGroups=e.target.checked; render(); });
+
+  el('#advLine').addEventListener('input', function(e){ model.limits.line = Math.max(8, Math.min(255, e.target.value|0)); updateRight(); });
+  el('#advArgc').addEventListener('input', function(e){ model.limits.argc = Math.max(2, Math.min(16, e.target.value|0)); updateRight(); });
+  el('#advGroups').addEventListener('input', function(e){ model.limits.groups = Math.max(1, Math.min(16, e.target.value|0)); updateRight(); });
+
+  el('#btnAddGroup').addEventListener('click', function(){ addGroup(); render(); });
+
+  // tabs
+  el('#tabHeader').addEventListener('click', function(){
+    model.rightTab = 'header';
+    el('#tabHeader').classList.add('active');
+    el('#tabExample').classList.remove('active');
+    updateRight();
+  });
+  el('#tabExample').addEventListener('click', function(){
+    model.rightTab = 'example';
+    el('#tabExample').classList.add('active');
+    el('#tabHeader').classList.remove('active');
+    updateRight();
+  });
+
+  // copy/download right
+  el('#btnCopyRight').addEventListener('click', function(){
+    var text = el('#right').textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text);
+    } else {
+      // fallback
+      var ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
+      ta.select(); try{ document.execCommand('copy'); }catch(e){}
+      document.body.removeChild(ta);
+    }
+  });
+  el('#btnDownloadRight').addEventListener('click', function(){
+    var fname = model.rightTab==='header' ? 'generated_ucmd.h' : 'example.c';
+    downloadText(fname, el('#right').textContent);
+  });
+
+  // export header
+  el('#btnExportHdr').addEventListener('click', function(){
+    var cur = model.rightTab;
+    model.rightTab = 'header';
+    var text = rightText();
+    model.rightTab = cur;
+    downloadText('generated_ucmd.h', text);
+  });
+  el('#btnCopyHdr').addEventListener('click', function(){
+    var cur = model.rightTab;
+    model.rightTab = 'header';
+    var text = rightText();
+    model.rightTab = cur;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text);
+    } else {
+      var ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
+      ta.select(); try{ document.execCommand('copy'); }catch(e){}
+      document.body.removeChild(ta);
+    }
+  });
+
+  // ---- Export / Import konfigurace ----
+  el('#btnExportCfg').addEventListener('click', function(){
+    downloadJSON('ucmd_config.json', model);
+  });
+
+  el('#inImportCfg').addEventListener('change', function(e){
+    var files = e.target.files;
+    var file = files && files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var text = String(reader.result||'');
+        var cfg = JSON.parse(text);
+        if (!isValidModel(cfg)) { alert('Soubor nemá platnou strukturu konfigurace.'); return; }
+        applyModelSafely(cfg);
+        alert('Konfigurace byla importována.');
+      }catch(err){
+        alert('Nepodařilo se načíst .json: ' + (err && err.message ? err.message : err));
+      }finally{
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // drag&drop
+  var dz = el('#dropZone');
+  if (dz){
+    ['dragenter','dragover'].forEach(function(ev){
+      dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.add('bg-slate-100'); });
+    });
+    ['dragleave','drop'].forEach(function(ev){
+      dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.remove('bg-slate-100'); });
+    });
+    dz.addEventListener('drop', function(e){
+      var dt = e.dataTransfer;
+      var file = dt && dt.files && dt.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(){
+        try{
+          var text = String(reader.result||'');
+          var cfg = JSON.parse(text);
+          if (!isValidModel(cfg)) { alert('Soubor nemá platnou strukturu konfigurace.'); return; }
+          applyModelSafely(cfg);
+          alert('Konfigurace byla importována (drag&drop).');
+        }catch(err){
+          alert('Nepodařilo se načíst .json: ' + (err && err.message ? err.message : err));
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // vyčištění localStorage
+  el('#btnClearCfg').addEventListener('click', function(){
+    localStorage.removeItem(STORAGE_KEY);
+    alert('Uložená konfigurace byla smazána.');
+  });
+
+  // init
+  var loaded = loadFromLocal();
+  if (!loaded) render();
+  document.getElementById('tabHeader').classList.add('active');
+  document.getElementById('tabExample').classList.remove('active');
+  document.getElementById('tabHeader').click();
+  </script>
+</body>
+</html>

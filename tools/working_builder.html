@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>uCMD Builder — v3.6 (core-only • auto-size • single-header • string-pool)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card{ background:#fff;border:1px solid #e2e8f0;border-radius:1rem;box-shadow:0 1px 2px rgba(0,0,0,.04);padding:1rem }
+    .btn{ padding:.5rem .8rem;border-radius:.75rem;background:#0f172a;color:#fff;box-shadow:0 1px 1px rgba(0,0,0,.12) }
+    .btn:hover{ background:#111827 }
+    .btn-sec{ padding:.5rem .8rem;border-radius:.75rem;border:1px solid #cbd5e1;background:#fff }
+    .pill{ font-size:.75rem;padding:.15rem .5rem;border-radius:999px;background:#f1f5f9;border:1px solid #e2e8f0 }
+    .input{ width:100%;border:1px solid #cbd5e1;border-radius:.75rem;padding:.5rem .75rem }
+    .chev{ transition:.15s transform }
+    .chev.rot{ transform:rotate(-90deg) }
+    .codearea{ white-space:pre; overflow:auto; height:60vh }
+    .code{ background:#0b1220;color:#e5e7eb;border-radius:.5rem;padding:.6rem .75rem;overflow:auto;max-height:60vh }
+    .muted{ color:#64748b }
+    .tabs button{ padding:.4rem .7rem;border:1px solid #cbd5e1;border-radius:.6rem;background:#fff }
+    .tabs .active{ background:#0f172a;color:#fff;border-color:#0f172a }
+    .mini{ font-size:.75rem }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+    <header class="flex items-center justify-between gap-3">
+      <h1 class="text-2xl md:text-3xl font-bold">uCMD Builder <span class="text-sm font-normal text-slate-500 align-top">v3.6</span></h1>
+      <div class="flex gap-2">
+        <button id="btnExportHdr" class="btn">Export header</button>
+        <button id="btnCopyHdr" class="btn-sec">Kopírovat header</button>
+      </div>
+    </header>
+
+    <div class="grid md:grid-cols-5 gap-6">
+      <!-- LEFT: editor -->
+      <section class="card md:col-span-3 space-y-4">
+        <div class="grid md:grid-cols-3 gap-4">
+          <div>
+            <label class="text-sm font-medium">CLI instance (symbol)</label>
+            <input id="cliInstance" class="input mono" value="cli" />
+            <p class="text-xs muted mt-1">Zvol si libovolné jméno instance <span class="mono">ucmd_t</span> (např. <span class="mono">cli</span>).</p>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Auto-size limity</label>
+            <div class="grid grid-cols-3 gap-2 mt-1">
+              <div>
+                <label class="mini flex items-center gap-2">
+                  <input type="checkbox" id="autoLine" checked> Auto
+                </label>
+                <input id="advLine" class="input mono" type="number" min="8" max="255" value="64" disabled/>
+                <div class="text-xs muted">UCMD_MAX_LINE</div>
+              </div>
+              <div>
+                <label class="mini flex items-center gap-2">
+                  <input type="checkbox" id="autoArgc" checked> Auto
+                </label>
+                <input id="advArgc" class="input mono" type="number" min="2" max="16" value="8" disabled/>
+                <div class="text-xs muted">UCMD_MAX_ARGC</div>
+              </div>
+              <div>
+                <label class="mini flex items-center gap-2">
+                  <input type="checkbox" id="autoGroups" checked> Auto
+                </label>
+                <input id="advGroups" class="input mono" type="number" min="1" max="16" value="8" disabled/>
+                <div class="text-xs muted">UCMD_MAX_GROUPS</div>
+              </div>
+            </div>
+            <p class="text-xs muted mt-1">Auto se přepočítává při každé změně konfigurace.</p>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Poznámky (size)</label>
+            <ul class="text-xs leading-5 list-disc pl-5 space-y-1 mt-1">
+              <li>Auto výpočet z konfigurace; manuální override přepíše auto hodnotu.</li>
+              <li>Single-header: dej <span class="mono">#define UCMD_IMPLEMENTATION</span> + limity nad include.</li>
+              <li>Šetři flash: bez help textů, zapínat háky jen kde je potřeba.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="card">
+            <div class="text-sm font-semibold mb-2">Dokumentace</div>
+            <ul class="text-sm leading-5 list-disc pl-5 space-y-1">
+              <li><b>Storage proměnná</b>: prázdné → auto <span class="mono">g_&lt;group&gt;_&lt;item&gt;</span> (def. tam, kde před include dáš <span class="mono">#define UCMD_CLI_GEN_IMPLEMENTATION</span>). Vyplněné → header udělá <span class="mono">extern</span>, definici si uděláš sám.</li>
+              <li><b>Help</b> generujeme jen když vyplníš text.</li>
+              <li><b>on_set/on_status</b>: zapnuté ⇒ do tabulek jde jméno funkce + přidáme prototyp; těla napiš ve svém <span class="mono">.c</span>. Example ukáže skeletony.</li>
+              <li>Syntax: <span class="mono">help [group [item]]</span>, <span class="mono">&lt;group&gt; show [item]</span>, <span class="mono">&lt;group&gt; set &lt;item&gt; &lt;u8&gt;</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="text-sm font-semibold mb-2">Chování Example</div>
+            <ul class="text-sm leading-5 list-disc pl-5 space-y-1">
+              <li>Obsahuje <b>aktivní skeletony</b> callbacků (kompiluje samo) – zkopíruj do svého <span class="mono">.c</span>.</li>
+              <li>Ukáže a vypíše <b>auto proměnné</b> (pokud je necháš generovat).</li>
+              <li>Můžeš includovat <b>jen generovaný header</b> – obsahuje i <span class="mono">#include "ucmd.h"</span>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <hr>
+
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-medium">Skupiny</div>
+          <button id="btnAddGroup" class="btn-sec">+ Přidat skupinu</button>
+        </div>
+
+        <div id="groups" class="space-y-3"></div>
+      </section>
+
+      <!-- RIGHT: header/example tabs -->
+      <section class="card md:col-span-2 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="tabs flex gap-2">
+            <button id="tabHeader"  class="active">Header</button>
+            <button id="tabExample">Example</button>
+          </div>
+          <div class="flex gap-2">
+            <button id="btnCopyRight" class="btn-sec">Kopírovat</button>
+            <button id="btnDownloadRight" class="btn">Stáhnout</button>
+          </div>
+        </div>
+
+        <div id="paneHeader">
+          <textarea id="preview" class="w-full codearea mono text-sm p-3 rounded-lg border border-slate-300" spellcheck="false"></textarea>
+        </div>
+
+        <div id="paneExample" style="display:none">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="tabs flex gap-2">
+              <button id="tabExArduino" class="active">Arduino</button>
+              <button id="tabExPC">PC (host)</button>
+            </div>
+            <span class="muted text-xs ml-auto">Example se průběžně aktualizuje.</span>
+          </div>
+          <pre id="exampleCode" class="code mono text-xs"></pre>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Templates -->
+  <template id="tplGroup">
+    <div class="p-3 rounded-xl border border-slate-200 bg-slate-100">
+      <div class="flex items-center gap-2">
+        <button class="btn-sec btnToggle" title="Sbalit/rozbalit"><span class="chev">▸</span></button>
+        <span class="pill">group</span>
+        <input class="input mono flex-1 it-gname" placeholder="wireless"/>
+        <button class="btn-sec shrink-0 btnMoveUp" title="Nahoru">↑</button>
+        <button class="btn-sec shrink-0 btnDelGroup">Smazat</button>
+      </div>
+      <div class="g-body mt-3">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-medium">Položky</div>
+          <button class="btn-sec btnAddItem">+ Přidat položku</button>
+        </div>
+        <div class="items space-y-2 mt-2"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="tplItem">
+    <div class="p-3 rounded-lg border border-slate-200 bg-white">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-medium">Název položky (token)</label>
+          <input class="input mono it-name" placeholder="power"/>
+          <p class="text-xs muted">a–z0–9_, začínat písmenem</p>
+        </div>
+        <div>
+          <label class="text-xs font-medium">Storage proměnná (volitelné)</label>
+          <input class="input mono it-var" placeholder="auto (g_group_item)"/>
+          <p class="text-xs muted">vyplň existující symbol, nebo nech prázdné</p>
+        </div>
+        <div>
+          <label class="text-xs font-medium">Help text (volitelné)</label>
+          <input class="input mono it-help" placeholder="např. 0..20"/>
+        </div>
+        <div>
+          <label class="text-xs font-medium">Výchozí hodnota (0–255)</label>
+          <input class="input mono it-def" type="number" min="0" max="255" value="0"/>
+          <p class="text-xs muted">aktivní jen pro autoproměnné</p>
+        </div>
+      </div>
+
+      <div class="mt-2 flex flex-wrap gap-3 items-center">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" class="it-set"><span>on_set</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" class="it-status"><span>on_status</span>
+        </label>
+      </div>
+
+      <div class="mt-2 space-y-2 it-snippets" style="display:none"></div>
+
+      <div class="mt-2 text-right">
+        <button class="btn-sec btnDelItem">Smazat položku</button>
+      </div>
+    </div>
+  </template>
+
+  <script>
+  const el = s => document.querySelector(s);
+  const esc = s => (s||'').replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+
+  const model = {
+    cliInstance: 'cli',
+    limits: { autoLine:true, autoArgc:true, autoGroups:true, line:64, argc:8, groups:8 },
+    groups: [{ name:'wireless', expanded:true, items:[
+      { name:'channel', var:'', help:'1..11', def:1, set:false, status:false },
+      { name:'power',   var:'', help:'0..20', def:0, set:false, status:false },
+      { name:'scan',    var:'', help:'0,1',   def:0, set:true,  status:false },
+    ]}],
+    rightTab: 'header',
+    exampleTab: 'arduino'
+  };
+
+  const sanitizeToken = s => { s=(s||'').toLowerCase().replace(/[^a-z0-9_]/g,'_'); if(!/^[a-z_]/.test(s)) s='v_'+s; return s; };
+  const sanitizeVar = s => (s||'').replace(/[^A-Za-z0-9_]/g,'_');
+  const autoVar = (g,i)=>`g_${g}_${i}`;
+
+  // ---- auto compute UCMD_MAX_* ----
+  function hasAnyItem(){ return model.groups.some(g=>g.items.length>0); }
+  function computeAutoGroups(){ return Math.max(1, model.groups.length); }
+  function computeAutoArgc(){ return hasAnyItem() ? 4 : 2; }
+  function computeAutoLine(){
+    const gLens = model.groups.map(g=>sanitizeToken(g.name).length);
+    const maxG = gLens.length ? Math.max(...gLens) : 0;
+    const itemLens = model.groups.flatMap(g=>g.items.map(it=>sanitizeToken(it.name).length));
+    const maxI = itemLens.length ? Math.max(...itemLens) : 0;
+    const L1 = 4 + 1 + maxG + (maxI? (1 + maxI) : 0);           // "help G [I]"
+    const L2 = maxG ? (maxG + 6 + (maxI?maxI:0)) : 0;           // "G show [I]"
+    const L3 = (maxG && maxI) ? (maxG + 1 + 3 + 1 + maxI + 1 + 3) : 0; // "G set I 255"
+    const base = Math.max(13, L1, L2, L3); // "help commands" = 13
+    const need = base + 1 /* NUL */ + 2 /* rezerva */;
+    return Math.max(16, Math.min(255, need|0));
+  }
+  function currentLimits(){
+    return {
+      line:   model.limits.autoLine   ? computeAutoLine()   : (model.limits.line|0),
+      argc:   model.limits.autoArgc   ? computeAutoArgc()   : (model.limits.argc|0),
+      groups: model.limits.autoGroups ? computeAutoGroups() : (model.limits.groups|0),
+    };
+  }
+
+  // ---- UI render ----
+  function addGroup(){
+    model.groups.forEach(g=>g.expanded=false);
+    model.groups.unshift({ name:'group'+(model.groups.length+1), expanded:true, items:[] });
+  }
+
+  function render(){
+    el('#cliInstance').value = model.cliInstance;
+
+    // autos
+    el('#autoLine').checked   = model.limits.autoLine;
+    el('#autoArgc').checked   = model.limits.autoArgc;
+    el('#autoGroups').checked = model.limits.autoGroups;
+
+    el('#advLine').disabled   = model.limits.autoLine;
+    el('#advArgc').disabled   = model.limits.autoArgc;
+    el('#advGroups').disabled = model.limits.autoGroups;
+
+    const lim = currentLimits();
+    el('#advLine').value   = lim.line;
+    el('#advArgc').value   = lim.argc;
+    el('#advGroups').value = lim.groups;
+
+    const wrap=el('#groups'); wrap.innerHTML='';
+    model.groups.forEach((g,gi)=>{
+      const n=document.querySelector('#tplGroup').content.cloneNode(true);
+      const gname=n.querySelector('.it-gname');
+      const body=n.querySelector('.g-body');
+      const chev=n.querySelector('.chev');
+
+      gname.value=g.name; body.style.display=g.expanded?'':'none'; chev.classList.toggle('rot', !g.expanded);
+      n.querySelector('.btnToggle').addEventListener('click',()=>{ g.expanded=!g.expanded; render(); });
+      n.querySelector('.btnMoveUp').addEventListener('click',()=>{ if(gi>0){ const t=model.groups.splice(gi,1)[0]; model.groups.splice(gi-1,0,t); render(); }});
+      n.querySelector('.btnDelGroup').addEventListener('click',()=>{ model.groups.splice(gi,1); render(); });
+      gname.addEventListener('input', (e)=>{ g.name=sanitizeToken(e.target.value); updateRight(); });
+
+      const itemsWrap=n.querySelector('.items'); itemsWrap.innerHTML='';
+      g.items.forEach((it,ii)=>{
+        const iNode=document.querySelector('#tplItem').content.cloneNode(true);
+        const inName=iNode.querySelector('.it-name');
+        const inVar =iNode.querySelector('.it-var');
+        const inHelp=iNode.querySelector('.it-help');
+        const inDef =iNode.querySelector('.it-def');
+        const cbSet =iNode.querySelector('.it-set');
+        const cbStat=iNode.querySelector('.it-status');
+        const snips =iNode.querySelector('.it-snippets');
+
+        inName.value=it.name; inVar.value=it.var||''; inHelp.value=it.help||''; inDef.value=it.def|0;
+        inDef.disabled=!!(it.var&&it.var.length);
+        cbSet.checked=!!it.set; cbStat.checked=!!it.status;
+
+        const showSnips=g.expanded && (it.set||it.status);
+        snips.style.display=showSnips?'':'none';
+        if(showSnips){
+          const varName = it.var && it.var.length ? it.var : autoVar(g.name,it.name);
+          snips.innerHTML='';
+          if(it.set){
+            const pre=document.createElement('pre'); pre.className='code mono text-xs';
+            pre.textContent=
+`// do svého .c
+void on_set_${g.name}_${it.name}(uint8_t v){
+  /* validace/side-effects před zápisem do ${varName} */
+  (void)v;
+}`;
+            snips.appendChild(pre);
+          }
+          if(it.status){
+            const pre=document.createElement('pre'); pre.className='code mono text-xs';
+            pre.textContent=
+`// do svého .c
+void on_status_${g.name}_${it.name}(void){
+  /* extra řádky ke stavu, mimo implicitní "${it.name}=<u8>" */
+}`;
+            snips.appendChild(pre);
+          }
+        }
+
+        inName.addEventListener('input', (e)=>{ it.name=sanitizeToken(e.target.value); updateRight(); });
+        inVar .addEventListener('input', (e)=>{ it.var=sanitizeVar(e.target.value); inDef.disabled=!!(it.var&&it.var.length); updateRight(); });
+        inHelp.addEventListener('input', (e)=>{ it.help=e.target.value; updateRight(); });
+        inDef .addEventListener('input', (e)=>{ let v=Number(e.target.value|0); if(v<0)v=0; if(v>255)v=255; it.def=v; updateRight(); });
+        cbSet .addEventListener('change', (e)=>{ it.set=e.target.checked; render(); });
+        cbStat.addEventListener('change', (e)=>{ it.status=e.target.checked; render(); });
+
+        iNode.querySelector('.btnDelItem').addEventListener('click',()=>{ g.items.splice(ii,1); render(); });
+
+        itemsWrap.appendChild(iNode);
+      });
+
+      n.querySelector('.btnAddItem').addEventListener('click',()=>{ g.items.unshift({name:'item'+(g.items.length+1), var:'', help:'', def:0, set:false, status:false}); render(); });
+
+      wrap.appendChild(n);
+    });
+
+    updateRight();
+  }
+
+  // ---- header generation (core-only, string pool, ctx pointer) ----
+  function collectNames(){
+    const groups=new Set(), items=new Set();
+    model.groups.forEach(g=>{
+      groups.add(sanitizeToken(g.name));
+      g.items.forEach(it=> items.add(sanitizeToken(it.name)) );
+    });
+    return {groups:[...groups], items:[...items]};
+  }
+  function collectHelpTexts(){
+    const map=new Map(); let idx=1;
+    model.groups.forEach(g=>g.items.forEach(it=>{
+      const t=(it.help||'').trim(); if(!t) return;
+      if(!map.has(t)){ map.set(t, `S_HELP_${idx++}`); }
+    }));
+    return map; // text -> sym
+  }
+
+  function genHeader(){
+    const H=[], lim=currentLimits();
+    const ci = sanitizeToken(model.cliInstance);
+    const {groups, items} = collectNames();
+    const helpMap = collectHelpTexts();
+
+    H.push(`#ifndef UCMD_CLI_GEN_H`);
+    H.push(`#define UCMD_CLI_GEN_H`);
+    H.push(``);
+    // ensure limits visible before ucmd.h (allow user override first)
+    H.push(`#ifndef UCMD_MAX_LINE`);
+    H.push(`#define UCMD_MAX_LINE ${lim.line}`);
+    H.push(`#endif`);
+    H.push(`#ifndef UCMD_MAX_ARGC`);
+    H.push(`#define UCMD_MAX_ARGC ${lim.argc}`);
+    H.push(`#endif`);
+    H.push(`#ifndef UCMD_MAX_GROUPS`);
+    H.push(`#define UCMD_MAX_GROUPS ${lim.groups}`);
+    H.push(`#endif`);
+    H.push(`#include "ucmd.h"`);
+    H.push(``);
+    H.push(`/* Generated by uCMD Builder v3.6 — core-only, auto-size, single-header-ready */`);
+    H.push(`#ifndef UCMD_COUNT`);
+    H.push(`#define UCMD_COUNT(a) ((uint8_t)(sizeof(a)/sizeof((a)[0])))`);
+    H.push(`#endif`);
+    H.push(``);
+
+    // string pool helper
+    H.push(`#ifdef __AVR__`);
+    H.push(`#  define STR_DEF(sym,lit) static const char sym[] PROGMEM = lit`);
+    H.push(`#else`);
+    H.push(`#  define STR_DEF(sym,lit) static const char sym[] = lit`);
+    H.push(`#endif`);
+    H.push(``);
+
+    // pool: group & item names (dedup napříč skupinami i položkami)
+    const nameSet = new Set([...groups, ...items]);
+    nameSet.forEach(nm=> H.push(`STR_DEF(S_${nm}, "${esc(nm)}");`) );
+    if(nameSet.size) H.push('');
+
+    // pool: help texts (dedup by content)
+    if(helpMap.size){
+      for(const [text,sym] of helpMap.entries()){
+        H.push(`STR_DEF(${sym}, "${esc(text)}");`);
+      }
+      H.push('');
+    }
+
+    // internal CLI ctx pointer (independent of instance name)
+    H.push(`static ucmd_t *ucmd__ctx = 0;`);
+    H.push('');
+
+    // storage (auto/extern)
+    model.groups.forEach(g=>{
+      g.items.forEach(it=>{
+        const vname = (it.var&&it.var.length) ? sanitizeVar(it.var) : autoVar(g.name,it.name);
+        const isAuto = !(it.var&&it.var.length);
+        if(isAuto){
+          H.push(`#ifndef UCMD_CLI_GEN_IMPLEMENTATION`);
+          H.push(`extern volatile uint8_t ${vname};`);
+          H.push(`#else`);
+          H.push(`volatile uint8_t ${vname} = ${it.def|0};`);
+          H.push(`#endif`);
+        } else {
+          H.push(`extern volatile uint8_t ${vname}; /* define in your code */`);
+        }
+      });
+    });
+    H.push('');
+
+    // help functions (use deduped help text symbols)
+    model.groups.forEach(g=>g.items.forEach(it=>{
+      const t=(it.help||'').trim(); if(!t) return;
+      const mapSym = helpMap.get(t);
+      H.push(`static void help_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}(void){ ucmd_putsln_P(ucmd__ctx, ${mapSym}); }`);
+    }));
+    if(model.groups.some(g=>g.items.some(it=>(it.help||'').trim().length))) H.push('');
+
+    // prototypes for selected callbacks
+    model.groups.forEach(g=>g.items.forEach(it=>{
+      if(it.set)   H.push(`void on_set_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}(uint8_t v);`);
+      if(it.status)H.push(`void on_status_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}(void);`);
+    }));
+    if(model.groups.some(g=>g.items.some(it=>it.set||it.status))) H.push('');
+
+    // arrays & groups
+    model.groups.forEach(g=>{
+      const arr=`ARR_${sanitizeToken(g.name).toUpperCase()}`;
+      H.push(`static const ucmd_u8_item_t ${arr}[] = {`);
+      const lines = g.items.map(it=>{
+        const vname = (it.var&&it.var.length) ? sanitizeVar(it.var) : autoVar(g.name,it.name);
+        const set = it.set   ? `on_set_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}`   : `0`;
+        const st  = it.status? `on_status_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}`: `0`;
+        const hp  = (it.help && it.help.trim().length) ? `help_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}` : `0`;
+        return `  { S_${sanitizeToken(it.name)}, &${vname}, ${set}, ${st}, ${hp} }`;
+      });
+      H.push(lines.join(',\n'));
+      H.push(`};`);
+      H.push(`static const ucmd_u8_group_t G_${sanitizeToken(g.name)} = { S_${sanitizeToken(g.name)}, ${arr}, UCMD_COUNT(${arr}) };`);
+      H.push('');
+    });
+
+    // register: set ctx + add groups
+    H.push(`static inline void ucmd_cli_register(ucmd_t* cli){`);
+    H.push(`  ucmd__ctx = cli;`);
+    model.groups.forEach(g=> H.push(`  ucmd_u8_add_group(cli, &G_${sanitizeToken(g.name)});`) );
+    H.push(`}`);
+    H.push('');
+
+    H.push(`#endif /* UCMD_CLI_GEN_H */`);
+    return H.join('\n');
+  }
+
+  // ---- Examples ----
+  function customVarsList(){ const out=[]; model.groups.forEach(g=>g.items.forEach(it=>{ if(it.var&&it.var.length) out.push(sanitizeVar(it.var)); })); return [...new Set(out)]; }
+  function autoVarsList(){ const out=[]; model.groups.forEach(g=>g.items.forEach(it=>{ if(!(it.var&&it.var.length)) out.push({name:autoVar(g.name,it.name), def:it.def|0}); })); return out; }
+  function genCallbackSnippets(){
+    const arr=[]; model.groups.forEach(g=>g.items.forEach(it=>{
+      if(it.set)   arr.push(`void on_set_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}(uint8_t v){ (void)v; /* TODO */ }`);
+      if(it.status)arr.push(`void on_status_${sanitizeToken(g.name)}_${sanitizeToken(it.name)}(void){ /* TODO */ }`);
+    })); return arr.join('\n');
+  }
+
+  function genExampleArduino(){
+    const lim=currentLimits();
+    const ci=sanitizeToken(model.cliInstance);
+    const customs=customVarsList(), autos=autoVarsList();
+    const L=[];
+    L.push(`/* main.ino — minimal Arduino demo (single-header) */`);
+    L.push(`// Konfigurace (platí i pro implementaci, protože se ucmd.c přitáhne z ucmd.h):`);
+    L.push(`#define UCMD_MAX_LINE   ${lim.line}`);
+    L.push(`#define UCMD_MAX_ARGC   ${lim.argc}`);
+    L.push(`#define UCMD_MAX_GROUPS ${lim.groups}`);
+    L.push(`#define UCMD_IMPLEMENTATION`);
+    L.push(`#define UCMD_CLI_GEN_IMPLEMENTATION  // pro auto proměnné z generátoru`);
+    L.push(`#include "ucmd_cli_gen.h"   // includuje ucmd.h → netřeba samostatné ucmd.c`);
+    L.push('');
+    if(customs.length){ L.push(`/* VLASTNÍ proměnné: pokud už existují jinde, smaž tento blok */`); customs.forEach(n=>L.push(`volatile uint8_t ${n} = 0;`)); L.push(''); }
+    const stubs = genCallbackSnippets(); if(stubs){ L.push(`/* Callbacky – zkopíruj do svého .c (ponecháno aktivní, aby example sám zkompiloval): */`); L.push(stubs); L.push(''); }
+    L.push(`ucmd_t ${ci};`);
+    L.push(`static void serial_putc(char c){ Serial.write((uint8_t)c); }`);
+    L.push('');
+    L.push(`void setup(){`);
+    L.push(`  Serial.begin(115200);`);
+    L.push(`  ucmd_init(&${ci}, serial_putc);`);
+    L.push(`  ucmd_cli_register(&${ci});`);
+    if(autos.length){ L.push(`  // Auto proměnné (definované zde):`); autos.forEach(v=> L.push(`  Serial.print(F("${v.name}=")); Serial.println(${v.name});`)); }
+    L.push(`  Serial.print(F("> "));`);
+    L.push(`}`);
+    L.push('');
+    L.push(`void loop(){`);
+    L.push(`  while (Serial.available()){`);
+    L.push(`    char ch=(char)Serial.read();`);
+    L.push(`    if (ch=='\\n'){ ucmd_feed_char(&${ci},'\\n'); Serial.print(F("\\r\\n> ")); }`);
+    L.push(`    else if (ch!='\\r'){ Serial.write((uint8_t)ch); ucmd_feed_char(&${ci},ch); }`);
+    L.push(`  }`);
+    L.push(`}`);
+    return L.join('\n');
+  }
+
+  function genExamplePC(){
+    const lim=currentLimits();
+    const ci=sanitizeToken(model.cliInstance);
+    const customs=customVarsList(), autos=autoVarsList();
+    const L=[];
+    L.push(`/* main_pc.c — minimal host demo (single-header) */`);
+    L.push(`#include <stdio.h>`);
+    L.push(`// Konfigurace (platí i pro implementaci, protože se ucmd.c přitáhne z ucmd.h):`);
+    L.push(`#define UCMD_MAX_LINE   ${lim.line}`);
+    L.push(`#define UCMD_MAX_ARGC   ${lim.argc}`);
+    L.push(`#define UCMD_MAX_GROUPS ${lim.groups}`);
+    L.push(`#define UCMD_IMPLEMENTATION`);
+    L.push(`#define UCMD_CLI_GEN_IMPLEMENTATION  // pro auto proměnné z generátoru`);
+    L.push(`#include "ucmd_cli_gen.h"   // includuje ucmd.h → netřeba samostatné ucmd.c`);
+    L.push('');
+    if(customs.length){ L.push(`/* VLASTNÍ proměnné: pokud už existují jinde, smaž tento blok */`); customs.forEach(n=>L.push(`volatile uint8_t ${n} = 0;`)); L.push(''); }
+    const stubs = genCallbackSnippets(); if(stubs){ L.push(`/* Callbacky – zkopíruj do svého .c (ponecháno aktivní, aby example sám zkompiloval): */`); L.push(stubs); L.push(''); }
+    L.push(`ucmd_t ${ci};`);
+    L.push(`static void host_putc(char c){ putchar((unsigned char)c); }`);
+    L.push(`int main(void){`);
+    L.push(`  ucmd_init(&${ci}, host_putc);`);
+    L.push(`  ucmd_cli_register(&${ci});`);
+    if(autos.length){ L.push(`  /* Auto proměnné (definované zde): */`); autos.forEach(v=> L.push(`  printf("%s=%u\\n", "${v.name}", (unsigned)${v.name});`)); }
+    L.push(`  int ch; while((ch=getchar())!=EOF){ ucmd_feed_char(&${ci}, (char)ch); }`);
+    L.push(`  return 0;`);
+    L.push(`}`);
+    return L.join('\n');
+  }
+
+  // ---- Right panel ----
+  function updateRight(){
+    el('#preview').value = genHeader();
+    const ex = (model.exampleTab==='arduino') ? genExampleArduino() : genExamplePC();
+    el('#exampleCode').textContent = ex;
+    // refresh top indicators too
+    const lim = currentLimits();
+    el('#advLine').value   = lim.line;
+    el('#advArgc').value   = lim.argc;
+    el('#advGroups').value = lim.groups;
+  }
+
+  // ---- events ----
+  el('#btnExportHdr').addEventListener('click', ()=>{
+    const blob=new Blob([genHeader()],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='ucmd_cli_gen.h'; a.click(); URL.revokeObjectURL(a.href);
+  });
+  el('#btnCopyHdr').addEventListener('click', ()=>{
+    navigator.clipboard.writeText(genHeader()); const b=el('#btnCopyHdr'); b.textContent='Zkopírováno ✓'; setTimeout(()=>b.textContent='Kopírovat header',1200);
+  });
+
+  el('#tabHeader').addEventListener('click', ()=>{
+    el('#tabHeader').classList.add('active'); el('#tabExample').classList.remove('active');
+    el('#paneHeader').style.display=''; el('#paneExample').style.display='none';
+    el('#btnDownloadRight').onclick=()=>{ const blob=new Blob([genHeader()],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='ucmd_cli_gen.h'; a.click(); URL.revokeObjectURL(a.href); };
+    el('#btnCopyRight').onclick=()=>{ navigator.clipboard.writeText(genHeader()); const b=el('#btnCopyRight'); b.textContent='Zkopírováno ✓'; setTimeout(()=>b.textContent='Kopírovat',1200); };
+  });
+  el('#tabExample').addEventListener('click', ()=>{
+    el('#tabExample').classList.add('active'); el('#tabHeader').classList.remove('active');
+    el('#paneExample').style.display=''; el('#paneHeader').style.display='none';
+    el('#btnDownloadRight').onclick=()=>{
+      const isArduino=(model.exampleTab==='arduino'); const txt=isArduino?genExampleArduino():genExamplePC();
+      const blob=new Blob([txt],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=isArduino?'main.ino':'main_pc.c'; a.click(); URL.revokeObjectURL(a.href);
+    };
+    el('#btnCopyRight').onclick=()=>{
+      const isArduino=(model.exampleTab==='arduino'); const txt=isArduino?genExampleArduino():genExamplePC();
+      navigator.clipboard.writeText(txt); const b=el('#btnCopyRight'); b.textContent='Zkopírováno ✓'; setTimeout(()=>b.textContent='Kopírovat',1200);
+    };
+  });
+
+  el('#tabExArduino').addEventListener('click', ()=>{ el('#tabExArduino').classList.add('active'); el('#tabExPC').classList.remove('active'); model.exampleTab='arduino'; updateRight(); });
+  el('#tabExPC').addEventListener('click', ()=>{ el('#tabExPC').classList.add('active'); el('#tabExArduino').classList.remove('active'); model.exampleTab='pc'; updateRight(); });
+
+  el('#cliInstance').addEventListener('input', e=>{ model.cliInstance=sanitizeToken(e.target.value); updateRight(); });
+
+  // auto/manual toggles
+  el('#autoLine').addEventListener('change', e=>{ model.limits.autoLine=e.target.checked; render(); });
+  el('#autoArgc').addEventListener('change', e=>{ model.limits.autoArgc=e.target.checked; render(); });
+  el('#autoGroups').addEventListener('change', e=>{ model.limits.autoGroups=e.target.checked; render(); });
+
+  // manual overrides
+  el('#advLine').addEventListener('input', e=>{ model.limits.line = Math.max(8, Math.min(255, e.target.value|0)); updateRight(); });
+  el('#advArgc').addEventListener('input', e=>{ model.limits.argc = Math.max(2, Math.min(16, e.target.value|0)); updateRight(); });
+  el('#advGroups').addEventListener('input', e=>{ model.limits.groups = Math.max(1, Math.min(16, e.target.value|0)); updateRight(); });
+
+  el('#btnAddGroup').addEventListener('click', ()=>{ addGroup(); render(); });
+
+  // init
+  render();
+  el('#tabHeader').click();
+  </script>
+</body>
+</html>
